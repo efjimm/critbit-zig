@@ -291,14 +291,16 @@ pub fn CritBitMap(
 
             var node = &self.head;
             var tag = self.head_tag;
-            return while (tag == .inode) {
+            while (tag == .inode) {
                 const inode = node.inode;
-                if (inode.byte >= bytes.len) break null;
+                if (inode.byte >= bytes.len) return null;
 
                 const direction: u1 = @intCast((bytes[inode.byte] >> inode.bit) & 1);
                 node = &inode.child[direction];
                 tag = inode.tags[direction];
-            } else &node.kv;
+            }
+
+            return if (std.mem.startsWith(u8, node.kv.key, key)) &node.kv else null;
         }
     };
 }

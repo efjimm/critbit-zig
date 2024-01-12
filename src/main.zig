@@ -112,7 +112,8 @@ pub fn CritBitMap(
             return .not_found;
         }
 
-        pub fn prefix(self: Self, key: K) ?*const Enode {
+        pub fn contains(self: Self, key: K) bool {
+            if (self.head_tag == .none) return false;
             const bytes = self.context.asBytes(&key);
             var node = &self.head;
             var tag = self.head_tag;
@@ -131,12 +132,7 @@ pub fn CritBitMap(
 
             const top_bytes = self.context.asBytes(&node.kv.key);
             const min_len = @min(top_bytes.len, bytes.len);
-            return if (std.mem.eql(u8, top_bytes[0..min_len], bytes[0..min_len])) top else null;
-        }
-
-        pub fn contains(self: Self, key: K) bool {
-            if (self.head_tag == .none) return false;
-            return self.prefix(key) != null;
+            return std.mem.eql(u8, top_bytes[0..min_len], bytes[0..min_len]);
         }
 
         pub const PutError = error{IsPrefix} || Allocator.Error;
@@ -287,6 +283,22 @@ pub fn CritBitMap(
             }
 
             return node.kv;
+        }
+
+        // If a prefix of `key` or `key` itself is contained in the map, return it, otherwise null.
+        pub fn getPrefix(self: *Self, key: K) ?*KV {
+            const bytes = self.context.asBytes(&key);
+
+            var node = &self.head;
+            var tag = self.head_tag;
+            return while (tag == .inode) {
+                const inode = node.inode;
+                if (inode.byte >= bytes.len) break null;
+
+                const direction: u1 = @intCast((bytes[inode.byte] >> inode.bit) & 1);
+                node = &inode.child[direction];
+                tag = inode.tags[direction];
+            } else &node.kv;
         }
     };
 }

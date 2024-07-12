@@ -216,18 +216,20 @@ pub fn CritBitMap(
         }
 
         pub fn remove(self: *Self, allocator: Allocator, key: K) ?V {
-            if (self.head == .none) return null;
+            if (self.head_tag == .none) return null;
 
             const bytes = self.context.asBytes(&key);
 
             // Find closest node while keeping track of parent node
             var node = &self.head;
+            var node_tag = self.head_tag;
             var parent: ?*Enode = null;
             var direction: u1 = undefined;
-            while (node.* == .inode) {
+            while (node_tag == .inode) {
                 parent = node;
                 direction = getDirection(bytes, node.inode.*);
                 node = &node.inode.child[direction];
+                node_tag = node.inode.tags[direction];
             }
 
             // Key doesn't exist in map
@@ -240,7 +242,7 @@ pub fn CritBitMap(
                 p.* = old.child[direction ^ 1];
                 allocator.destroy(old);
             } else {
-                self.head = .none;
+                self.head = .{ .none = {} };
             }
 
             return value;
@@ -362,4 +364,9 @@ test "critbit2" {
     try t.expectEqual(Map.Tag.kv, map.head_tag);
     try t.expectEqualStrings("This is epic and nice", map.head.kv.key);
     try t.expectEqual(@as(usize, 10), map.head.kv.value);
+}
+
+test {
+    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDeclsRecursive(CritBitMap([]const u8, u32, StringContext));
 }

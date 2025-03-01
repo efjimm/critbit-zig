@@ -1,5 +1,6 @@
 .{
-    .name = "critbit-zig",
+    .name = .critbit,
     .version = "0.0.1",
+    .fingerprint = 0xb9a37dbe775c7d22,
     .paths = .{ "src", "build.zig", "build.zig.zon" },
 }

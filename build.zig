@@ -5,17 +5,13 @@ pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    _ = b.addModule("critbit", .{
+    const mod = b.addModule("critbit", .{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const tests = b.addTest(.{ .root_module = mod });
 
     const run_tests = b.addRunArtifact(tests);
 

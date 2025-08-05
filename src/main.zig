@@ -91,12 +91,12 @@ pub fn CritBitMap(
         }
 
         pub const GetResult = union(enum) {
-            value: V,
+            kv: KV,
             prefix,
             not_found,
         };
 
-        pub fn get(self: Self, key: K) GetResult {
+        pub fn get(self: *const Self, key: K) GetResult {
             if (self.head_tag == .none) return .not_found;
 
             const kv = self.closestConst(key);
@@ -106,14 +106,14 @@ pub fn CritBitMap(
 
             if (std.mem.startsWith(u8, res_bytes, bytes)) {
                 assert(bytes.len <= res_bytes.len);
-                return if (res_bytes.len == bytes.len) .{ .value = kv.value } else .prefix;
+                return if (res_bytes.len == bytes.len) .{ .kv = kv } else .prefix;
             }
 
             return .not_found;
         }
 
-        pub fn contains(self: Self, key: K) bool {
-            if (self.head_tag == .none) return false;
+        pub fn contains(self: *const Self, key: K) ?*Inode {
+            if (self.head_tag == .none) return null;
             const bytes = self.context.asBytes(&key);
             var node = &self.head;
             var tag = self.head_tag;
@@ -132,7 +132,10 @@ pub fn CritBitMap(
 
             const top_bytes = self.context.asBytes(&node.kv.key);
             const min_len = @min(top_bytes.len, bytes.len);
-            return std.mem.eql(u8, top_bytes[0..min_len], bytes[0..min_len]);
+            if (std.mem.eql(u8, top_bytes[0..min_len], bytes[0..min_len])) {
+                return top.inode;
+            }
+            return null;
         }
 
         pub const PutError = error{IsPrefix} || Allocator.Error;
@@ -271,7 +274,7 @@ pub fn CritBitMap(
             return &node.kv;
         }
 
-        fn closestConst(self: Self, key: K) KV {
+        fn closestConst(self: *const Self, key: K) KV {
             const bytes = self.context.asBytes(&key);
 
             var node = &self.head;
@@ -288,7 +291,9 @@ pub fn CritBitMap(
         }
 
         // If a prefix of `key` or `key` itself is contained in the map, return it, otherwise null.
-        pub fn getPrefix(self: *Self, key: K) ?*KV {
+        pub fn getPrefix(self: *const Self, key: K) ?*const KV {
+            if (self.head_tag == .none) return null;
+
             const bytes = self.context.asBytes(&key);
 
             var node = &self.head;
@@ -303,6 +308,23 @@ pub fn CritBitMap(
             }
 
             return if (std.mem.startsWith(u8, node.kv.key, key)) &node.kv else null;
+        }
+
+        pub fn traverse(self: *const Self, context: anytype) !void {
+            try self.traverseNode(&self.head, self.head_tag, context);
+        }
+
+        pub fn traverseNode(self: *const Self, node: *const Enode, tag: Tag, context: anytype) !void {
+            switch (tag) {
+                .kv => {
+                    try context.apply(node.kv);
+                },
+                .inode => {
+                    try self.traverseNode(&node.inode.child[0], node.inode.tags[0], context);
+                    try self.traverseNode(&node.inode.child[1], node.inode.tags[1], context);
+                },
+                .none => {},
+            }
         }
     };
 }
@@ -340,16 +362,16 @@ test "critbit1" {
     try t.expectEqualStrings("umm \x03", node.child[1].kv.key);
     try t.expectEqual(@as(u32, 40), node.child[1].kv.value);
 
-    try t.expectEqual(true, map.contains(""));
-    try t.expectEqual(true, map.contains("u"));
-    try t.expectEqual(true, map.contains("um"));
-    try t.expectEqual(true, map.contains("umm"));
-    try t.expectEqual(true, map.contains("umm "));
-    try t.expectEqual(true, map.contains("umm \x01"));
-    try t.expectEqual(true, map.contains("umm \x04"));
-    try t.expectEqual(false, map.contains("something else"));
-    try t.expectEqual(false, map.contains("ummm"));
-    try t.expectEqual(false, map.contains("umm \x05"));
+    try t.expectEqual(true, map.contains("") != null);
+    try t.expectEqual(true, map.contains("u") != null);
+    try t.expectEqual(true, map.contains("um") != null);
+    try t.expectEqual(true, map.contains("umm") != null);
+    try t.expectEqual(true, map.contains("umm ") != null);
+    try t.expectEqual(true, map.contains("umm \x01") != null);
+    try t.expectEqual(true, map.contains("umm \x04") != null);
+    try t.expectEqual(false, map.contains("something else") != null);
+    try t.expectEqual(false, map.contains("ummm") != null);
+    try t.expectEqual(false, map.contains("umm \x05") != null);
 }
 
 test "critbit2" {
